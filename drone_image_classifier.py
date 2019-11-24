@@ -10,21 +10,28 @@ MADE BY:
     Orson Meyreles
     John Quitto-Graham  
     Carlos Valdes
+    Catherine Angelini
+    Marcial Barrios 
 --------------------------------------------------------------------------------------------------------------
 """
 
 import numpy as np
 import pandas as pd
+from random import choice
 import pickle
 import matplotlib.pyplot as plt
 import os
 import cv2
 import tensorflow as tf
-import tensorflow.python.keras as keras 
+import tensorflow.keras as keras 
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, Activation, Flatten
+from tensorflow.keras.layers import Conv2D, MaxPooling2D
 from tqdm import tqdm
 
 #Directory variables
-DATADIR = r"C:\Users\ivanr\OneDrive\Documents\FIUCS\SparkDev\ai-uav-simulator" # The directory to SAFE and UNSAFE PFM/PNG images
+DATADIR = r"." # The directory to SAFE and UNSAFE PFM/PNG images
 STATES_PNG = ["Airsim_SafePNG", "Airsim_UnsafePNG"] #Sub-directories for png files
 SAFE_IMG_PNG = STATES_PNG[0] 
 UNSAFE_IMG_PNG = STATES_PNG[1]
@@ -38,8 +45,6 @@ def dataToAR():
 
         for img in os.listdir(path_PNG):  # iterate over each image
             img_ArrayPNG = cv2.imread(os.path.join(path_PNG,img) ,cv2.IMREAD_GRAYSCALE)  # convert to array
-            '''plt.imshow(img_array, cmap='gray')  # graph it
-            plt.show()  # display!'''
             break  # we just want one for now so break
         break  #...and one more!
 
@@ -78,113 +83,142 @@ def create_training_data():
             except Exception as e:  # in the interest in keeping the output clean...
                 pass
 
-    def CNN_trainer(IMAGE):
-        pickle_in = open("X.pickle","rb")
-        X = pickle.load(pickle_in)
+def CNN_training(input_df):
+    X = input_df.as_matrix(columns=input_df.columns[0])
+    y = input_df.as_matrix(columns=input_df.columns[0])
 
-        pickle_in = open("y.pickle","rb")
-        y = pickle.load(pickle_in)
+    pickle_out = open("X.pickle", "wb")
+    pickle.dump(X,pickle_out)
+    pickle_out.close()
 
-        X = X/255.0 #normalize
+    pickle_out = open("y.pickle", "wb")
+    pickle.dump(y,pickle_out)
+    pickle_out.close()
 
-        dense_layers = [0]
-        layer_sizes = [64]
-        conv_layers = [1]
+    pickle_in = open("X.pickle", "rb")
+    X = pickle.load(pickle_in)
 
-        for dense_layer in dense_layers:
-            for layer_size in layer_sizes:
-                for conv_layer in conv_layers:
-                    NAME = "{}-conv-{}-nodes-{}-dense-{}".format(conv_layer, layer_size, dense_layer, int(time.time()))
-                    print(NAME)
-                    model = Sequential() #feed-forward network
-                    model.add(Conv2D(layer_size, (3, 3), input_shape=X.shape[1:]))
-                    model.add(Activation('relu'))
-                    model.add(MaxPooling2D(pool_size=(2, 2)))
+    pickle_in = open("y.pickle", "rb")
+    y = pickle.load(pickle_in)
 
-                for l in range(conv_layer-1):
-                    model.add(Conv2D(layer_size, (3, 3)))
-                    model.add(Activation('relu'))
-                    model.add(MaxPooling2D(pool_size=(2, 2)))
+    X = X/255.0 #normalize
+    
+    return X
+'''    dense_layers = [0]
+    layer_sizes = [64]
+    conv_layers = [1]
 
-                model.add(Flatten())
+    for dense_layer in dense_layers:
+        for layer_size in layer_sizes:
+            for conv_layer in conv_layers:
+                NAME = "{}-conv-{}-nodes-{}-dense-{}".format(conv_layer, layer_size, dense_layer, int(time.time()))
+                print(NAME)
+                model = Sequential() #feed-forward network
+                model.add(Conv2D(layer_size, (3, 3), input_shape=X.shape[1:]))
+                model.add(Activation('relu'))
+                model.add(MaxPooling2D(pool_size=(2, 2)))
 
-                for _ in range(dense_layer):
-                    model.add(Dense(layer_size))
-                    model.add(Activation('relu'))
+            for l in range(conv_layer-1):
+                model.add(Conv2D(layer_size, (3, 3)))
+                model.add(Activation('relu'))
+                model.add(MaxPooling2D(pool_size=(2, 2)))
 
-                model.add(Dense(1))
-                model.add(Activation('sigmoid'))
+            model.add(Flatten())
 
-                tensorboard = TensorBoard(log_dir="logs/{}".format(NAME))
+            for _ in range(dense_layer):
+                model.add(Dense(layer_size))
+                model.add(Activation('relu'))
 
-                model.compile(loss='binary_crossentropy',
-                                optimizer='adam',
-                                metrics=['accuracy'],
-                                )
+            model.add(Dense(1))
+            model.add(Activation('sigmoid'))
 
-                model.fit(X, y,
-                            batch_size=32,
-                            epochs=10,
-                            validation_split=0.1,
-                            callbacks=[tensorboard])
+            tensorboard = TensorBoard(log_dir="logs/{}".format(NAME))
 
-        model.save('CNN_tester.model')
+            model.compile(loss='binary_crossentropy',
+                            optimizer='adam',
+                            metrics=['accuracy'],
+                            )
+
+            model.fit(X, y,
+                        batch_size=32,
+                        epochs=10,
+                        validation_split=0.1,
+                        callbacks=[tensorboard])
+
+    model.save('CNN_tester.model')'''
 
 def buildDF():
-    dataToAR()
-
-    #store safe/unsafe images into a list
-    imageSafeList = []
-    imageUnsafeList = []
+    #dataToAR()
 
     #appends safe & unsafe images to the appropriate lists to later use as labels
     imageSafeList = pd.Series()
     imageUnsafeList = pd.Series()
-    images_df = pd.DataFrame(columns=["Data", "Condition"])
-    i = 0 #DELETE
+    images_df = pd.DataFrame(columns=["image_Data", "State"])
+    
     
     for file in os.listdir(DATADIR + '\\' + SAFE_IMG_PNG):
         try:
-            if i <= 10:
-                frame = cv2.imread(DATADIR + '\\' + SAFE_IMG_PNG + '\\' + file)
-                frame = cv2.resize(frame, (50, 50))
-                images_df.loc[file] = [frame, "Safe"]
-            else:
-                break
-            i += 1
+            
+            frame = cv2.imread(DATADIR + '\\' + SAFE_IMG_PNG + '\\' + file)
+            frame = cv2.resize(frame, (50, 50))
+            images_df.loc[file] = [frame, "Safe"]
+    
         except Exception as e:
-            print(str(e))
-    i = 0 #DELETE
+            continue
+
     for file in os.listdir(DATADIR + '\\' + UNSAFE_IMG_PNG):
         try:
-            if i <= 10:
-                frame = cv2.imread(DATADIR + '\\' + UNSAFE_IMG_PNG + '\\' + file)
-                frame = cv2.resize(frame, (50, 50))
-                images_df.loc[file] = [frame, "Unsafe"]
-            else:
-                break
-            i += 1
+            frame = cv2.imread(DATADIR + '\\' + UNSAFE_IMG_PNG + '\\' + file)
+            frame = cv2.resize(frame, (50, 50))
+            images_df.loc[file] = [frame, "Unsafe"]
+
         except Exception as e:
-            print(str(e))
+            continue
 
-    #final list that stores the images
-    images = imageSafeList.append(imageUnsafeList)
-    
-    
-
-    labels = []
-    for i in range(len(imageSafeList)):
-        labels.append("safe")
-    for u in range(len(imageUnsafeList)):
-        labels.append("unsafe")
-
-    # feed_dict = {images : labels}
-    # retPairs = feed_dict
-    # print(retPairs)
     return images_df
+
+def ProduceSampleData(df, condition: int ): #0 for Safe, 1 for Unsafe
+
+    '''
+    Returns a list with samples of either Safe (0) or Unsafe (1) images 
+    contained as numpy arrays. The number of samples contained in the list
+    is equal to 10% (rounded) of the total amount of images in the dataframe
+    '''
+    numSafeSamples = int(len(df)*0.10/2)
+    safeImages = df[df['State'] == "Safe"]
+    lenSafeSamples = len(safeImages)
+    safeSamples = []
+
+    numUnsafeSamples = int(len(df)*0.10/2)
+    UnsafeImages = df[df['State'] == "Unsafe"]
+    lenUnsafeSamples = len(UnsafeImages)
+    unsafeSamples = []
+
+    if condition == 0:
+        for num in range(numSafeSamples):
+            randomImage = random.randint(0,lenSafeSamples)
+            aSafeImage = safeImages.iloc[randomImage]
+            safeSamples.append(aSafeImage)
+        return safeSamples
+
+    elif condition == 1:
+        for num in range(numUnsafeSamples):
+            randomImage = random.randint(0,lenUnsafeSamples)
+            anUnsafeImage = unsafeImages.iloc[randomImage]
+            unsafeSamples.append(anUnsafeImage)
+        return unsafeSamples
     
 
-images_df = buildDF()
+
+
+def main():
+    #Here we are building a dataframe of our images and their labels
+    images_df = buildDF()
+    print(ProduceSampleData(images_df,1))
+    #print(CNN_training(images_df))
+
+main()
+
 # Where we'll store weights and biases
 PARAMFILE = 'params.pkl'
 
